@@ -1,0 +1,12 @@
+---
+BasedOnStyle: LLVM
+BreakBeforeBraces: Allman
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ColumnLimit: 100
+PointerAlignment: Left
+ReferenceAlignment: Left
+ContinuationIndentWidth: 4
+ConstructorInitializerIndentWidth: 4
+IndentCaseLabels: true

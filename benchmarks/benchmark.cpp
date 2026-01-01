@@ -1,7 +1,8 @@
 #include <iostream>
 #include <torus/naive_ring_buffer.hpp>
 
-int main() {
+int main()
+{
     std::cout << "Torus Ring Buffer Benchmarks\n";
     std::cout << "============================\n\n";
 
