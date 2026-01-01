@@ -8,7 +8,7 @@
 template <typename T> class naive_ring_buffer
 {
 public:
-  explicit naive_ring_buffer(const uint32_t capacity) : head_{0}, tail_{0}, size_{0}, capacity_{capacity}, ring_buffer_{capacity} {}
+  explicit naive_ring_buffer(const uint32_t capacity) : head_{0}, tail_{0}, size_{0}, capacity_{capacity}, ring_buffer_(capacity) {}
 
   void push(const T& item)
   {
