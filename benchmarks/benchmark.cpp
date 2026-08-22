@@ -1,6 +1,7 @@
 #include <chrono>
 #include <iostream>
 #include <thread>
+#include <torus/lockfree_ring_buffer.hpp>
 #include <torus/naive_ring_buffer.hpp>
 
 int main()
@@ -22,20 +23,20 @@ int main()
         auto start = std::chrono::high_resolution_clock::now();
 
         std::thread producer{[&buffer]()
-            {
-                for (int i = 0; i < num_operations; ++i)
-                {
-                    buffer.push(i);
-                }
-            }};
+                             {
+                                 for (int i = 0; i < num_operations; ++i)
+                                 {
+                                     buffer.push(i);
+                                 }
+                             }};
 
         std::thread consumer{[&buffer, &checksum]()
-            {
-                for (int i = 0; i < num_operations; ++i)
-                {
-                    checksum += buffer.pop();
-                }
-            }};
+                             {
+                                 for (int i = 0; i < num_operations; ++i)
+                                 {
+                                     checksum += buffer.pop();
+                                 }
+                             }};
 
         producer.join();
         consumer.join();
@@ -52,8 +53,61 @@ int main()
 
         std::cout << "Time: " << ms << " ms\n";
         std::cout << "Throughput: " << static_cast<uint64_t>(ops_per_sec) << " ops/sec\n";
-        std::cout << "Avg latency: " << (ms * 1000000.0) / (num_operations * 2.0)
-                  << " ns/op\n";
+        std::cout << "Avg latency: " << (ms * 1000000.0) / (num_operations * 2.0) << " ns/op\n";
+        std::cout << "Validation: " << (valid ? "PASS" : "FAIL") << " (checksum: " << checksum
+                  << ", expected: " << expected << ")\n\n";
+    }
+
+    // Lock-free ring buffer benchmark
+    {
+        std::cout << "Lock-Free Ring Buffer (atomics)\n";
+        std::cout << "Operations: " << num_operations << "\n";
+
+        lockfree_ring_buffer<int> buffer(capacity);
+        uint64_t checksum = 0;
+
+        auto start = std::chrono::high_resolution_clock::now();
+
+        std::thread producer{[&buffer]()
+                             {
+                                 for (int i = 0; i < num_operations; ++i)
+                                 {
+                                     while (!buffer.try_push(i))
+                                     {
+                                         std::this_thread::yield();
+                                     }
+                                 }
+                             }};
+
+        std::thread consumer{[&buffer, &checksum]()
+                             {
+                                 int item;
+                                 for (int i = 0; i < num_operations; ++i)
+                                 {
+                                     while (!buffer.try_pop(item))
+                                     {
+                                         std::this_thread::yield();
+                                     }
+                                     checksum += item;
+                                 }
+                             }};
+
+        producer.join();
+        consumer.join();
+
+        const auto end = std::chrono::high_resolution_clock::now();
+        const auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+        const auto ms = static_cast<long double>(duration.count());
+
+        const long double ops_per_sec = (num_operations * 2.0) / (ms / 1000.0);
+
+        // Validate: sum of 0 to n-1 = n * (n-1) / 2
+        const uint64_t expected = static_cast<uint64_t>(num_operations) * (num_operations - 1) / 2;
+        const bool valid = (checksum == expected);
+
+        std::cout << "Time: " << ms << " ms\n";
+        std::cout << "Throughput: " << static_cast<uint64_t>(ops_per_sec) << " ops/sec\n";
+        std::cout << "Avg latency: " << (ms * 1000000.0) / (num_operations * 2.0) << " ns/op\n";
         std::cout << "Validation: " << (valid ? "PASS" : "FAIL") << " (checksum: " << checksum
                   << ", expected: " << expected << ")\n\n";
     }
