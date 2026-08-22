@@ -46,14 +46,16 @@ that ThreadSanitizer refuses to start without it.
 ./build/benchmarks/benchmark
 ```
 
-10M items through a capacity-1M buffer, one producer thread and one consumer
-thread, checksum validated at the end. Numbers from one run on my machine
-(Ryzen 9 9900X, gcc 14.2, -O2), they move around a bit between runs:
+10M items through a million-slot buffer, one producer thread and one consumer
+thread, checksum validated at the end. Numbers from my machine (Ryzen 9 9900X,
+gcc 14.2, -O2). The naive numbers are stable across runs; the lock-free ones
+are not, for reasons explained below:
 
-| implementation | time | throughput | avg latency |
-|---|---|---|---|
-| naive (mutex)    | 660 ms | ~30M ops/sec  | ~33 ns/op  |
-| lock-free (SPSC) | 36 ms  | ~555M ops/sec | ~1.8 ns/op |
+| implementation                     | time     | throughput        | avg latency    |
+|------------------------------------|----------|-------------------|----------------|
+| naive (mutex)                      | 660 ms   | ~30M ops/sec      | ~33 ns/op      |
+| lock-free, `%` indexing            | 36 ms    | ~555M ops/sec     | ~1.8 ns/op     |
+| lock-free, masked (power-of-two)   | 25-63 ms | ~300-800M ops/sec | ~1.3-3.2 ns/op |
 
 Most of the gap is just syscalls. Every naive push/pop grabs the mutex and can
 wake or sleep on the condvar, which means futex traffic when threads contend.
@@ -80,7 +82,7 @@ writer of that variable.
 ### The full check
 
 Indices are free-running: they increase forever and wrap naturally at 2^32,
-with `% capacity_` applied only when indexing into storage. Queue size is then
+with indexing into storage done as `idx & (capacity_ - 1)`. Queue size is then
 just `write - read`, so full is `write - read >= capacity` and empty is
 `read == write`. Unsigned subtraction survives wraparound as long as fewer
 than 2^32 items are in flight, which always holds. An earlier attempt stored
@@ -92,7 +94,32 @@ producers incrementing write_idx_ without a CAS loop would corrupt the queue
 immediately. That is the price of the SPSC design, and worth remembering
 before reaching for it in real code.
 
+### Power-of-two indexing
+
+Mapping a free-running index onto a slot needs `% capacity_`, and since
+capacity_ is a runtime value the compiler has to emit an integer division for
+it. Division is one of the slowest instructions on the CPU, and here it sat
+directly in the hot path: compute the slot, write the item, publish the index,
+all waiting on that one instruction.
+
+If the capacity is always a power of two, modulo becomes a bitwise AND.
+Subtracting one from a power of two leaves a mask of ones covering exactly the
+low bits of the index, so `idx & (capacity_ - 1)` produces the same remainder
+in a single cycle.
+
+The constructor enforces this by rounding up with std::bit_ceil instead of
+rejecting anything, so asking for 1000 slots hands you 1024 and prints a
+warning on stderr when it happens. A zero capacity throws, because bit_ceil(0)
+returns 0 and a queue that can never accept an item is nobody's intention.
+
+With only this change the same binary went from ~555M to ~800M ops/sec at its
+best, about 44%. Repeat runs land anywhere between 350M and 800M though: at
+these speeds where the scheduler happens to place the spinning threads matters
+more than a few saved cycles. The naive numbers don't move like this because
+their cost is dominated by kernel time, which doesn't care about thread
+placement.
+
 ## TODO
 
-- power-of-two capacities, bitmask indexing instead of `%`
 - MPMC variant
+- pin the benchmark threads (taskset) so the lock-free numbers stop wandering

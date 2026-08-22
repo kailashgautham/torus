@@ -9,7 +9,7 @@ int main()
     std::cout << "Torus Ring Buffer Benchmarks\n";
     std::cout << "============================\n\n";
 
-    const uint32_t capacity = 1'000'000;
+    const uint32_t capacity = 1 << 20;
     const uint32_t num_operations = 10'000'000;
 
     // Naive ring buffer benchmark
