@@ -1,2 +1,11 @@
 add_executable(benchmark benchmark.cpp)
 target_link_libraries(benchmark PRIVATE torus)
+
+# optional: only built when boost is available (apt install libboost-dev)
+find_package(Boost QUIET)
+if(Boost_FOUND)
+    add_executable(benchmark_boost benchmark_boost.cpp)
+    target_link_libraries(benchmark_boost PRIVATE torus Boost::headers)
+else()
+    message(STATUS "Boost not found, skipping the boost comparison benchmark")
+endif()
