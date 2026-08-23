@@ -1,5 +1,7 @@
 # torus
 
+[![ci](https://github.com/kailashgautham/torus/actions/workflows/ci.yml/badge.svg)](https://github.com/kailashgautham/torus/actions/workflows/ci.yml)
+
 Torus is a ring buffer implementation library, written in C++23. Currently, 
 there are two implementations: a naive SPSC ring buffer written with mutexes 
 and condition variables, and a lock-free SPSC version to gain significant

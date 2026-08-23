@@ -1,0 +1,45 @@
+name: ci
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build -j
+      - name: Run tests
+        run: ./build/tests/test
+
+  thread-sanitizer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S . -B build-tsan -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-fsanitize=thread -g"
+      - name: Build
+        run: cmake --build build-tsan -j
+      # recent kernels randomize mmap heavily enough that tsan refuses to start
+      # without disabling aslr for the process
+      - name: Run tests under ThreadSanitizer
+        run: setarch $(uname -m) -R ./build-tsan/tests/test
+
+  benchmark-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install boost (for the comparison benchmark)
+        run: sudo apt-get update && sudo apt-get install -y libboost-dev
+      - name: Configure and build
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build -j
+      - name: Benchmarks run end to end and validate
+        run: |
+          ./build/benchmarks/benchmark | tee bench.log
+          ./build/benchmarks/benchmark_boost | tee bench_boost.log
+          ! grep -q FAIL bench.log
+          ! grep -q FAIL bench_boost.log
